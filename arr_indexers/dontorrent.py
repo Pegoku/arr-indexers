@@ -14,7 +14,8 @@ import xml.etree.ElementTree as ET
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
-DEFAULT_BASE_URL = "https://fdb0-don.mirror.pm"
+DEFAULT_PROXY_SOURCE_URL = "https://donproxies.com/"
+DEFAULT_BASE_URL = "auto"
 USER_AGENT = "Mozilla/5.0 (compatible; DonTorrentProwlarr/1.0)"
 
 CAPS_CATEGORIES = {
@@ -56,6 +57,32 @@ def strip_tags(value):
 
 def absolute_url(base_url, path):
     return urllib.parse.urljoin(base_url.rstrip("/") + "/", path)
+
+
+def discover_dontorrent_base_url(source_url=DEFAULT_PROXY_SOURCE_URL):
+    content, _, _ = http_request(source_url)
+    text = content.decode("utf-8", errors="replace")
+    candidates = []
+
+    for href in re.findall(r"""href=["']([^"']+)["']""", text, flags=re.IGNORECASE):
+        href = html.unescape(href).strip()
+        if not href:
+            continue
+
+        parsed = urllib.parse.urlparse(href)
+        if parsed.scheme not in {"http", "https"}:
+            continue
+
+        host = parsed.netloc.lower()
+        if "donproxies.com" in host or "t.me" in host or ".onion" in host:
+            continue
+        if "don" in host or "mirror" in host:
+            candidates.append(f"{parsed.scheme}://{parsed.netloc}")
+
+    if not candidates:
+        raise RuntimeError(f"could not discover DonTorrent proxy from {source_url}")
+
+    return candidates[0].rstrip("/")
 
 
 def infer_category(path, badge):
@@ -227,8 +254,21 @@ def compute_pow(challenge, difficulty=3):
 
 
 class DonTorrentServer(BaseHTTPRequestHandler):
-    base_url = DEFAULT_BASE_URL
+    configured_base_url = DEFAULT_BASE_URL
+    proxy_source_url = DEFAULT_PROXY_SOURCE_URL
+    base_url = None
     api_key = None
+
+    @classmethod
+    def get_base_url(cls, force_refresh=False):
+        if cls.configured_base_url and cls.configured_base_url != "auto":
+            return cls.configured_base_url.rstrip("/")
+
+        if force_refresh or not cls.base_url:
+            cls.base_url = discover_dontorrent_base_url(cls.proxy_source_url)
+            logging.info("discovered DonTorrent proxy URL: %s", cls.base_url)
+
+        return cls.base_url
 
     def log_message(self, fmt, *args):
         logging.info("%s - %s", self.address_string(), fmt % args)
@@ -284,19 +324,22 @@ class DonTorrentServer(BaseHTTPRequestHandler):
 
         query = params.get("q", [""])[0].strip()
         items = self.search(query)
-        self.send_bytes(build_feed_xml(self.base_url, self.public_url(), items))
+        self.send_bytes(build_feed_xml(self.get_base_url(), self.public_url(), items))
 
     def search(self, query):
+        return self.with_proxy_refresh(lambda base_url: self.search_with_base_url(base_url, query))
+
+    def search_with_base_url(self, base_url, query):
         if query:
             body, _, _ = http_request(
-                absolute_url(self.base_url, "/buscar"),
+                absolute_url(base_url, "/buscar"),
                 method="POST",
                 data={"valor": query, "Buscar": "Buscar"},
             )
-            return parse_results(self.base_url, body)
+            return parse_results(base_url, body)
 
-        body, _, _ = http_request(absolute_url(self.base_url, "/ultimos"))
-        return parse_results(self.base_url, body)
+        body, _, _ = http_request(absolute_url(base_url, "/ultimos"))
+        return parse_results(base_url, body)
 
     def handle_download(self, params):
         if not self.authorized(params):
@@ -309,13 +352,24 @@ class DonTorrentServer(BaseHTTPRequestHandler):
             self.send_bytes(b"Bad download parameters\n", status=400, content_type="text/plain; charset=utf-8")
             return
 
-        download_url = self.resolve_download_url(content_id, table)
+        download_url = self.with_proxy_refresh(lambda base_url: self.resolve_download_url(base_url, content_id, table))
         self.send_response(302)
         self.send_header("Location", download_url)
         self.end_headers()
 
-    def resolve_download_url(self, content_id, table):
-        api_url = absolute_url(self.base_url, "/api_validate_pow.php")
+    def with_proxy_refresh(self, callback):
+        base_url = self.get_base_url()
+        try:
+            return callback(base_url)
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, RuntimeError):
+            if self.configured_base_url and self.configured_base_url != "auto":
+                raise
+
+            logging.warning("DonTorrent proxy request failed; refreshing proxy URL and retrying once", exc_info=True)
+            return callback(self.get_base_url(force_refresh=True))
+
+    def resolve_download_url(self, base_url, content_id, table):
+        api_url = absolute_url(base_url, "/api_validate_pow.php")
         headers = {"Content-Type": "application/json", "Accept": "application/json"}
 
         generate_body, _, _ = http_request(
@@ -343,7 +397,7 @@ class DonTorrentServer(BaseHTTPRequestHandler):
         if not download_url:
             raise RuntimeError("proof-of-work response did not include a download URL")
 
-        return absolute_url(self.base_url, download_url)
+        return absolute_url(base_url, download_url)
 
 
 def main():
@@ -351,17 +405,20 @@ def main():
     parser.add_argument("--host", default=os.getenv("ARR_INDEXERS_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=int(os.getenv("ARR_INDEXERS_PORT", "9697")))
     parser.add_argument("--base-url", default=os.getenv("DONTORENT_BASE_URL", DEFAULT_BASE_URL))
+    parser.add_argument("--proxy-source-url", default=os.getenv("DONTORENT_PROXY_SOURCE_URL", DEFAULT_PROXY_SOURCE_URL))
     parser.add_argument("--api-key", default=os.getenv("ARR_INDEXERS_API_KEY"))
     parser.add_argument("--log-level", default=os.getenv("ARR_INDEXERS_LOG_LEVEL", "INFO"))
     args = parser.parse_args()
 
     logging.basicConfig(level=getattr(logging, args.log_level.upper(), logging.INFO), format="%(levelname)s: %(message)s")
-    DonTorrentServer.base_url = args.base_url.rstrip("/")
+    DonTorrentServer.configured_base_url = args.base_url.rstrip("/") if args.base_url else DEFAULT_BASE_URL
+    DonTorrentServer.proxy_source_url = args.proxy_source_url
     DonTorrentServer.api_key = args.api_key
 
     server = ThreadingHTTPServer((args.host, args.port), DonTorrentServer)
     logging.info("serving DonTorrent Torznab proxy on http://%s:%s/api", args.host, args.port)
-    logging.info("upstream DonTorrent base URL: %s", DonTorrentServer.base_url)
+    logging.info("configured DonTorrent base URL: %s", DonTorrentServer.configured_base_url)
+    logging.info("DonTorrent proxy source URL: %s", DonTorrentServer.proxy_source_url)
     server.serve_forever()
 
 

@@ -6,7 +6,8 @@ services:
     ports:
       - "9697:9697"
     environment:
-      DONTORENT_BASE_URL: "https://fdb0-don.mirror.pm"
+      DONTORENT_BASE_URL: "auto"
+      DONTORENT_PROXY_SOURCE_URL: "https://donproxies.com/"
       ARR_INDEXERS_LOG_LEVEL: "INFO"
       # Optional. If set, use the same value as the Generic Torznab API key in Prowlarr.
       # ARR_INDEXERS_API_KEY: "replace-with-your-own-key"
