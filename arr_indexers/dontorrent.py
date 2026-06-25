@@ -367,7 +367,7 @@ class DonTorrentServer(BaseHTTPRequestHandler):
             )
             return parse_results(base_url, body)
 
-        body, _, _ = http_request(absolute_url(base_url, "/ultimos"))
+        body, _, _ = http_request(absolute_url(base_url, "/"))
         return parse_results(base_url, body)
 
     def handle_download(self, params, route_site=None):
