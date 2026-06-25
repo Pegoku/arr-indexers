@@ -16,10 +16,8 @@ This project runs those indexer-specific flows behind a Torznab-compatible HTTP 
 docker run --rm \
   -p 9697:9697 \
   -e DONTORENT_BASE_URL=https://fdb0-don.mirror.pm \
-  ghcr.io/YOUR_GITHUB_USER/arr-indexers:latest
+  ghcr.io/pegoku/arr-indexers:latest
 ```
-
-After the GitHub repository is created, replace `YOUR_GITHUB_USER` with the owner of the repo.
 
 ## Run Locally
 
@@ -62,3 +60,9 @@ DonTorrent proxy domains rotate. Check https://donproxies.com/#proxy and update 
 The GitHub Actions workflow builds the Docker image on pull requests and publishes it to GHCR on pushes to `main` and version tags.
 
 No registry secrets are required. The workflow uses the repository `GITHUB_TOKEN` with `packages: write`.
+
+Published image:
+
+```text
+ghcr.io/pegoku/arr-indexers:latest
+```

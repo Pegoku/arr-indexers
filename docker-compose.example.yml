@@ -1,6 +1,6 @@
 services:
   arr-indexers:
-    image: ghcr.io/YOUR_GITHUB_USER/arr-indexers:latest
+    image: ghcr.io/pegoku/arr-indexers:latest
     container_name: arr-indexers
     restart: unless-stopped
     ports:
