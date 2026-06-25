@@ -31,10 +31,16 @@ Add a new `Generic Torznab` indexer:
 
 - Name: `DonTorrent`
 - URL: `http://127.0.0.1:9697/api`
-- Additional Parameters: `site=dontorrent`
+- Additional Parameters: `&site=dontorrent`
 - API key: any value, unless `ARR_INDEXERS_API_KEY` is set
 
-The `site` parameter is required. Requests without it return `400`.
+The `site` parameter is required. Requests without it return `400`. Prowlarr expects additional parameters in query-string form, including the leading `&`.
+
+If your Prowlarr build still rejects that field, use this URL instead and leave Additional Parameters empty:
+
+```text
+http://127.0.0.1:9697/api?site=dontorrent
+```
 
 If Prowlarr runs in Docker, use an address reachable from the Prowlarr container, such as `http://host.docker.internal:9697/api` where supported, or the host LAN IP.
 
