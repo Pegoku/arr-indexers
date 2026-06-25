@@ -167,6 +167,65 @@ def parse_results(base_url, content):
     return list(deduped.values())
 
 
+def parse_detail_format(content):
+    text = content.decode("utf-8", errors="replace")
+    match = re.search(
+        r"<b[^>]*>\s*Formato:\s*</b>\s*(?P<format>[^<\r\n]+)",
+        text,
+        re.IGNORECASE,
+    )
+    if not match:
+        return ""
+
+    return strip_tags(match.group("format"))
+
+
+def normalize_release_tag(value):
+    value = re.sub(r"\s+", ".", value.strip())
+    return value.strip(".")
+
+
+def has_release_tag(title, tag):
+    return tag.lower().replace(".", "").replace("-", "") in title.lower().replace(".", "").replace("-", "")
+
+
+def enrich_result_from_detail(base_url, result):
+    try:
+        content, _, _ = http_request(result["details"])
+    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError):
+        logging.warning("failed to enrich result from detail page: %s", result["details"], exc_info=True)
+        return result
+
+    release_format = normalize_release_tag(parse_detail_format(content))
+    title = result["title"]
+    tags = []
+
+    if release_format and not has_release_tag(title, release_format):
+        tags.append(release_format)
+
+    if "subs" in title.lower():
+        if not has_release_tag(title, "Spanish.Subs"):
+            tags.append("Spanish.Subs")
+    elif not has_release_tag(title, "Spanish"):
+        tags.append("Spanish")
+
+    if tags:
+        result = dict(result)
+        result["title"] = f"{title} [{' '.join(tags)}]"
+
+    return result
+
+
+def enrich_results_from_details(base_url, results):
+    enriched = []
+    for result in results:
+        if result["category"] == "2000":
+            enriched.append(enrich_result_from_detail(base_url, result))
+        else:
+            enriched.append(result)
+    return enriched
+
+
 def build_result(base_url, path, title, quality, badge, pub_date):
     category = infer_category(path, badge)
     table = infer_table(path)
@@ -368,7 +427,7 @@ class DonTorrentServer(BaseHTTPRequestHandler):
                 method="POST",
                 data={"valor": query, "Buscar": "Buscar"},
             )
-            return parse_results(base_url, body)
+            return enrich_results_from_details(base_url, parse_results(base_url, body))
 
         body, _, _ = http_request(absolute_url(base_url, "/"))
         return parse_results(base_url, body)
