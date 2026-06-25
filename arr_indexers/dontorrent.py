@@ -16,6 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DEFAULT_PROXY_SOURCE_URL = "https://donproxies.com/"
 DEFAULT_BASE_URL = "auto"
+SITE_ID = "dontorrent"
 USER_AGENT = "Mozilla/5.0 (compatible; DonTorrentProwlarr/1.0)"
 
 CAPS_CATEGORIES = {
@@ -167,7 +168,7 @@ def build_result(base_url, path, title, quality, badge, pub_date):
     table = infer_table(path)
     download_id = infer_download_id(path)
     details = absolute_url(base_url, path)
-    params = urllib.parse.urlencode({"id": download_id or "", "tabla": table})
+    params = urllib.parse.urlencode({"site": SITE_ID, "id": download_id or "", "tabla": table})
     download = f"/download?{params}"
 
     if quality:
@@ -308,11 +309,24 @@ class DonTorrentServer(BaseHTTPRequestHandler):
             return True
         return params.get("apikey", [""])[0] == self.api_key
 
+    def validate_site(self, params):
+        site = params.get("site", [""])[0].strip().lower()
+        if not site:
+            self.send_json_error("missing required site parameter; use site=dontorrent", 400)
+            return False
+        if site != SITE_ID:
+            self.send_json_error(f"unsupported site parameter: {site}", 400)
+            return False
+        return True
+
     def public_url(self):
         host = self.headers.get("Host", "127.0.0.1")
         return f"http://{host}/"
 
     def handle_api(self, params):
+        if not self.validate_site(params):
+            return
+
         if not self.authorized(params):
             self.send_bytes(b"Forbidden\n", status=403, content_type="text/plain; charset=utf-8")
             return
@@ -342,6 +356,9 @@ class DonTorrentServer(BaseHTTPRequestHandler):
         return parse_results(base_url, body)
 
     def handle_download(self, params):
+        if not self.validate_site(params):
+            return
+
         if not self.authorized(params):
             self.send_bytes(b"Forbidden\n", status=403, content_type="text/plain; charset=utf-8")
             return

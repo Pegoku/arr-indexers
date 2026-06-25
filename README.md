@@ -31,7 +31,10 @@ Add a new `Generic Torznab` indexer:
 
 - Name: `DonTorrent`
 - URL: `http://127.0.0.1:9697/api`
+- Additional Parameters: `site=dontorrent`
 - API key: any value, unless `ARR_INDEXERS_API_KEY` is set
+
+The `site` parameter is required. Requests without it return `400`.
 
 If Prowlarr runs in Docker, use an address reachable from the Prowlarr container, such as `http://host.docker.internal:9697/api` where supported, or the host LAN IP.
 
@@ -58,10 +61,10 @@ python3 -m arr_indexers --site dontorrent --help
 ## Endpoints
 
 - `GET /health`
-- `GET /api?t=caps`
-- `GET /api?t=search&q=iron%20man%202`
-- `GET /api?t=movie&q=iron%20man%202`
-- `GET /api?t=tvsearch&q=oasis`
+- `GET /api?site=dontorrent&t=caps`
+- `GET /api?site=dontorrent&t=search&q=iron%20man%202`
+- `GET /api?site=dontorrent&t=movie&q=iron%20man%202`
+- `GET /api?site=dontorrent&t=tvsearch&q=oasis`
 
 ## Image Publishing
 
