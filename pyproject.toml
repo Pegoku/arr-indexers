@@ -1,0 +1,9 @@
+[project]
+name = "arr-indexers"
+version = "0.1.0"
+description = "Torznab proxy services for Prowlarr-compatible indexers."
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.py_compile]
+modules = ["arr_indexers"]
