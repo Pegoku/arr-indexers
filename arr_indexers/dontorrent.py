@@ -126,6 +126,10 @@ def parse_date(date_text):
         return None
 
 
+def current_pub_date():
+    return time.strftime("%a, %d %b %Y %H:%M:%S +0000", time.gmtime())
+
+
 def parse_results(base_url, content):
     text = content.decode("utf-8", errors="replace")
     results = []
@@ -180,7 +184,7 @@ def build_result(base_url, path, title, quality, badge, pub_date):
         "details": details,
         "download": download,
         "category": category,
-        "pub_date": pub_date,
+        "pub_date": pub_date or current_pub_date(),
         "size": 0,
     }
 
@@ -230,8 +234,7 @@ def build_feed_xml(base_url, public_url, items):
         ET.SubElement(item, "comments").text = result["details"]
         ET.SubElement(item, "category").text = result["category"]
         ET.SubElement(item, "size").text = str(result["size"])
-        if result["pub_date"]:
-            ET.SubElement(item, "pubDate").text = result["pub_date"]
+        ET.SubElement(item, "pubDate").text = result["pub_date"]
 
         enclosure = ET.SubElement(item, "enclosure")
         enclosure.set("url", download_url)
