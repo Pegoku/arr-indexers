@@ -15,13 +15,14 @@ This project runs those indexer-specific flows behind a Torznab-compatible HTTP 
 ```bash
 docker run --rm \
   -p 9697:9697 \
+  -e ARR_INDEXERS_SITE=dontorrent \
   ghcr.io/pegoku/arr-indexers:latest
 ```
 
 ## Run Locally
 
 ```bash
-python3 -m arr_indexers --host 0.0.0.0 --port 9697
+python3 -m arr_indexers --site dontorrent --host 0.0.0.0 --port 9697
 ```
 
 ## Prowlarr Setup
@@ -38,6 +39,7 @@ If Prowlarr runs in Docker, use an address reachable from the Prowlarr container
 
 | Variable | Default | Description |
 | --- | --- | --- |
+| `ARR_INDEXERS_SITE` | `dontorrent` | Site adapter to run. Currently supported: `dontorrent` |
 | `ARR_INDEXERS_HOST` | `0.0.0.0` in Docker, `127.0.0.1` locally | Bind address |
 | `ARR_INDEXERS_PORT` | `9697` | HTTP port |
 | `ARR_INDEXERS_API_KEY` | unset | Optional Torznab API key check |
@@ -46,6 +48,12 @@ If Prowlarr runs in Docker, use an address reachable from the Prowlarr container
 | `DONTORENT_PROXY_SOURCE_URL` | `https://donproxies.com/` | DonProxies page used for auto-discovery |
 
 DonTorrent proxy domains rotate. By default the service reads https://donproxies.com/ and uses the current generated proxy. Set `DONTORENT_BASE_URL` only if you want to pin a specific proxy URL.
+
+CLI site selection is also available:
+
+```bash
+python3 -m arr_indexers --site dontorrent --help
+```
 
 ## Endpoints
 

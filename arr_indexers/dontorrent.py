@@ -400,7 +400,7 @@ class DonTorrentServer(BaseHTTPRequestHandler):
         return absolute_url(base_url, download_url)
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description="DonTorrent Torznab proxy for Prowlarr")
     parser.add_argument("--host", default=os.getenv("ARR_INDEXERS_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=int(os.getenv("ARR_INDEXERS_PORT", "9697")))
@@ -408,7 +408,7 @@ def main():
     parser.add_argument("--proxy-source-url", default=os.getenv("DONTORENT_PROXY_SOURCE_URL", DEFAULT_PROXY_SOURCE_URL))
     parser.add_argument("--api-key", default=os.getenv("ARR_INDEXERS_API_KEY"))
     parser.add_argument("--log-level", default=os.getenv("ARR_INDEXERS_LOG_LEVEL", "INFO"))
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     logging.basicConfig(level=getattr(logging, args.log_level.upper(), logging.INFO), format="%(levelname)s: %(message)s")
     DonTorrentServer.configured_base_url = args.base_url.rstrip("/") if args.base_url else DEFAULT_BASE_URL
