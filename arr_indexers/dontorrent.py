@@ -168,7 +168,7 @@ def build_result(base_url, path, title, quality, badge, pub_date):
     table = infer_table(path)
     download_id = infer_download_id(path)
     details = absolute_url(base_url, path)
-    params = urllib.parse.urlencode({"site": SITE_ID, "id": download_id or "", "tabla": table})
+    params = urllib.parse.urlencode({"id": download_id or "", "tabla": table})
     download = f"/download?{params}"
 
     if quality:
@@ -222,10 +222,11 @@ def build_feed_xml(base_url, public_url, items):
     ET.SubElement(channel, "link").text = base_url
 
     for result in items:
+        download_url = urllib.parse.urljoin(public_url, result["download"].lstrip("/"))
         item = ET.SubElement(channel, "item")
         ET.SubElement(item, "title").text = result["title"]
         ET.SubElement(item, "guid", isPermaLink="true").text = result["guid"]
-        ET.SubElement(item, "link").text = urllib.parse.urljoin(public_url, result["download"])
+        ET.SubElement(item, "link").text = download_url
         ET.SubElement(item, "comments").text = result["details"]
         ET.SubElement(item, "category").text = result["category"]
         ET.SubElement(item, "size").text = str(result["size"])
@@ -233,7 +234,7 @@ def build_feed_xml(base_url, public_url, items):
             ET.SubElement(item, "pubDate").text = result["pub_date"]
 
         enclosure = ET.SubElement(item, "enclosure")
-        enclosure.set("url", urllib.parse.urljoin(public_url, result["download"]))
+        enclosure.set("url", download_url)
         enclosure.set("length", str(result["size"]))
         enclosure.set("type", "application/x-bittorrent")
 
@@ -290,13 +291,14 @@ class DonTorrentServer(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         params = urllib.parse.parse_qs(parsed.query)
+        route_site, route_path = self.parse_site_route(parsed.path)
 
         try:
-            if parsed.path == "/api":
-                self.handle_api(params)
-            elif parsed.path == "/download":
-                self.handle_download(params)
-            elif parsed.path == "/health":
+            if route_path == "/api":
+                self.handle_api(params, route_site)
+            elif route_path == "/download":
+                self.handle_download(params, route_site)
+            elif route_path == "/health":
                 self.send_bytes(b"ok\n", content_type="text/plain; charset=utf-8")
             else:
                 self.send_bytes(b"Not found\n", status=404, content_type="text/plain; charset=utf-8")
@@ -309,22 +311,35 @@ class DonTorrentServer(BaseHTTPRequestHandler):
             return True
         return params.get("apikey", [""])[0] == self.api_key
 
-    def validate_site(self, params):
-        site = params.get("site", [""])[0].strip().lower()
+    def parse_site_route(self, path):
+        if path in {"/api", "/download", "/health"}:
+            return None, path
+
+        prefix = f"/{SITE_ID}"
+        if path == prefix:
+            return SITE_ID, "/"
+        if path.startswith(prefix + "/"):
+            return SITE_ID, path[len(prefix):]
+
+        return None, path
+
+    def validate_site(self, params, route_site=None):
+        site = route_site or params.get("site", [""])[0].strip().lower()
         if not site:
-            self.send_json_error("missing required site parameter; use site=dontorrent", 400)
+            self.send_json_error("missing required site; use /dontorrent/api or site=dontorrent", 400)
             return False
         if site != SITE_ID:
             self.send_json_error(f"unsupported site parameter: {site}", 400)
             return False
         return True
 
-    def public_url(self):
+    def public_url(self, route_site=None):
         host = self.headers.get("Host", "127.0.0.1")
-        return f"http://{host}/"
+        path_prefix = f"{route_site}/" if route_site else ""
+        return f"http://{host}/{path_prefix}"
 
-    def handle_api(self, params):
-        if not self.validate_site(params):
+    def handle_api(self, params, route_site=None):
+        if not self.validate_site(params, route_site):
             return
 
         if not self.authorized(params):
@@ -338,7 +353,7 @@ class DonTorrentServer(BaseHTTPRequestHandler):
 
         query = params.get("q", [""])[0].strip()
         items = self.search(query)
-        self.send_bytes(build_feed_xml(self.get_base_url(), self.public_url(), items))
+        self.send_bytes(build_feed_xml(self.get_base_url(), self.public_url(route_site), items))
 
     def search(self, query):
         return self.with_proxy_refresh(lambda base_url: self.search_with_base_url(base_url, query))
@@ -355,8 +370,8 @@ class DonTorrentServer(BaseHTTPRequestHandler):
         body, _, _ = http_request(absolute_url(base_url, "/ultimos"))
         return parse_results(base_url, body)
 
-    def handle_download(self, params):
-        if not self.validate_site(params):
+    def handle_download(self, params, route_site=None):
+        if not self.validate_site(params, route_site):
             return
 
         if not self.authorized(params):

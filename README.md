@@ -30,13 +30,13 @@ python3 -m arr_indexers --site dontorrent --host 0.0.0.0 --port 9697
 Add a new `Generic Torznab` indexer:
 
 - Name: `DonTorrent`
-- URL: `http://127.0.0.1:9697/api`
-- Additional Parameters: `&site=dontorrent`
+- URL: `http://127.0.0.1:9697/dontorrent/api`
+- Additional Parameters: leave empty
 - API key: any value, unless `ARR_INDEXERS_API_KEY` is set
 
-The `site` parameter is required. Requests without it return `400`. Prowlarr expects additional parameters in query-string form, including the leading `&`.
+The site is required and is encoded in the URL path. Requests to `/api` without a site still return `400`.
 
-If your Prowlarr build still rejects that field, use this URL instead and leave Additional Parameters empty:
+The query-parameter form also works for direct HTTP clients:
 
 ```text
 http://127.0.0.1:9697/api?site=dontorrent
@@ -67,6 +67,8 @@ python3 -m arr_indexers --site dontorrent --help
 ## Endpoints
 
 - `GET /health`
+- `GET /dontorrent/api?t=caps`
+- `GET /dontorrent/api?t=search&q=iron%20man%202`
 - `GET /api?site=dontorrent&t=caps`
 - `GET /api?site=dontorrent&t=search&q=iron%20man%202`
 - `GET /api?site=dontorrent&t=movie&q=iron%20man%202`
