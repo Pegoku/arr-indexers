@@ -4,6 +4,7 @@ import hashlib
 import html
 import json
 import logging
+import os
 import re
 import time
 import urllib.error
@@ -347,11 +348,11 @@ class DonTorrentServer(BaseHTTPRequestHandler):
 
 def main():
     parser = argparse.ArgumentParser(description="DonTorrent Torznab proxy for Prowlarr")
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=9697)
-    parser.add_argument("--base-url", default=DEFAULT_BASE_URL)
-    parser.add_argument("--api-key", default=None)
-    parser.add_argument("--log-level", default="INFO")
+    parser.add_argument("--host", default=os.getenv("ARR_INDEXERS_HOST", "127.0.0.1"))
+    parser.add_argument("--port", type=int, default=int(os.getenv("ARR_INDEXERS_PORT", "9697")))
+    parser.add_argument("--base-url", default=os.getenv("DONTORENT_BASE_URL", DEFAULT_BASE_URL))
+    parser.add_argument("--api-key", default=os.getenv("ARR_INDEXERS_API_KEY"))
+    parser.add_argument("--log-level", default=os.getenv("ARR_INDEXERS_LOG_LEVEL", "INFO"))
     args = parser.parse_args()
 
     logging.basicConfig(level=getattr(logging, args.log_level.upper(), logging.INFO), format="%(levelname)s: %(message)s")
