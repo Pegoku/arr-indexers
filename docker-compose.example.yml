@@ -1,0 +1,12 @@
+services:
+  arr-indexers:
+    image: ghcr.io/YOUR_GITHUB_USER/arr-indexers:latest
+    container_name: arr-indexers
+    restart: unless-stopped
+    ports:
+      - "9697:9697"
+    environment:
+      DONTORENT_BASE_URL: "https://fdb0-don.mirror.pm"
+      ARR_INDEXERS_LOG_LEVEL: "INFO"
+      # Optional. If set, use the same value as the Generic Torznab API key in Prowlarr.
+      # ARR_INDEXERS_API_KEY: "replace-with-your-own-key"
