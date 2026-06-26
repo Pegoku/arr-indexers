@@ -224,10 +224,26 @@ def parse_detail_year(content):
     return match.group("year") if match else ""
 
 
+def parse_detail_publish_date(content):
+    text = content.decode("utf-8", errors="replace")
+    match = re.search(r"<b[^>]*>\s*Fecha:\s*</b>\s*(?P<date>\d{4}-\d{2}-\d{2})", text, re.IGNORECASE)
+    return parse_date(match.group("date")) if match else None
+
+
 def parse_detail_size(content):
     text = content.decode("utf-8", errors="replace")
     match = re.search(r"<b[^>]*>\s*Tama(?:ñ|&ntilde;)o:\s*</b>\s*(?P<size>[^<\r\n]+)", text, re.IGNORECASE)
     return parse_size_to_bytes(strip_tags(match.group("size"))) if match else 0
+
+
+def parse_detail_downloads(content):
+    text = content.decode("utf-8", errors="replace")
+    match = re.search(r"<b[^>]*>\s*Total Descargas:\s*</b>\s*(?P<downloads>[\d.,]+)", text, re.IGNORECASE)
+    if not match:
+        return 0
+
+    digits = re.sub(r"\D", "", match.group("downloads"))
+    return int(digits) if digits else 0
 
 
 def normalize_release_tag(value):
@@ -247,7 +263,9 @@ def enrich_result_from_detail(base_url, result):
 
     release_format = normalize_release_tag(parse_detail_format(content))
     release_year = parse_detail_year(content)
+    publish_date = parse_detail_publish_date(content)
     detail_size = parse_detail_size(content)
+    downloads = parse_detail_downloads(content)
     title = result["title"].strip()
     extracted_tags = []
 
@@ -274,6 +292,10 @@ def enrich_result_from_detail(base_url, result):
     result["title"] = re.sub(r"\s+", " ", " ".join(parts)).strip()
     if detail_size:
         result["size"] = detail_size
+    if publish_date:
+        result["pub_date"] = publish_date
+    if downloads:
+        result["grabs"] = downloads
 
     result["category"] = infer_category(result["details"], "", result["title"], release_format)
 
@@ -311,6 +333,7 @@ def build_result(base_url, path, title, quality, badge, pub_date):
         "size": estimate_size(title, category),
         "seeders": 1,
         "peers": 2,
+        "grabs": 0,
         "download_volume_factor": 0,
         "upload_volume_factor": 1,
     }
@@ -375,6 +398,7 @@ def build_feed_xml(base_url, public_url, items):
         for name, value in (
             ("seeders", result["seeders"]),
             ("peers", result["peers"]),
+            ("grabs", result["grabs"]),
             ("downloadvolumefactor", result["download_volume_factor"]),
             ("uploadvolumefactor", result["upload_volume_factor"]),
         ):
