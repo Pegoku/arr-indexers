@@ -21,7 +21,11 @@ USER_AGENT = "Mozilla/5.0 (compatible; DonTorrentProwlarr/1.0)"
 
 CAPS_CATEGORIES = {
     "2000": "Movies",
+    "2040": "Movies HD",
+    "2045": "Movies UHD",
     "5000": "TV",
+    "5030": "TV SD",
+    "5040": "TV HD",
     "5080": "Documentary",
 }
 
@@ -86,12 +90,18 @@ def discover_dontorrent_base_url(source_url=DEFAULT_PROXY_SOURCE_URL):
     return candidates[0].rstrip("/")
 
 
-def infer_category(path, badge):
-    haystack = f"{path} {badge}".lower()
+def infer_category(path, badge, title="", quality=""):
+    haystack = f"{path} {badge} {title} {quality}".lower()
     if "documental" in haystack:
         return "5080"
     if "serie" in haystack:
-        return "5000"
+        if "720p" in haystack or "1080p" in haystack or "4k" in haystack:
+            return "5040"
+        return "5030"
+    if "4k" in haystack or "2160p" in haystack:
+        return "2045"
+    if "720p" in haystack or "1080p" in haystack or "bluray" in haystack or "microhd" in haystack:
+        return "2040"
     return "2000"
 
 
@@ -128,6 +138,34 @@ def parse_date(date_text):
 
 def current_pub_date():
     return time.strftime("%a, %d %b %Y %H:%M:%S +0000", time.gmtime())
+
+
+def estimate_size(title, category):
+    haystack = f"{title} {category}".lower()
+    if "4k" in haystack or "2160p" in haystack:
+        return 50 * 1024 ** 3
+    if "1080p" in haystack:
+        return 4 * 1024 ** 3
+    if "720p" in haystack:
+        return 1 * 1024 ** 3
+    if category in {"2040", "2045", "5040"}:
+        return 4 * 1024 ** 3
+    return 512 * 1024 ** 2
+
+
+def parse_size_to_bytes(value):
+    match = re.search(r"(?P<number>\d+(?:[.,]\d+)?)\s*(?P<unit>tb|gb|mb|kb)", value or "", re.IGNORECASE)
+    if not match:
+        return 0
+
+    number = float(match.group("number").replace(",", "."))
+    multiplier = {
+        "kb": 1024,
+        "mb": 1024 ** 2,
+        "gb": 1024 ** 3,
+        "tb": 1024 ** 4,
+    }[match.group("unit").lower()]
+    return int(number * multiplier)
 
 
 def parse_results(base_url, content):
@@ -180,9 +218,20 @@ def parse_detail_format(content):
     return strip_tags(match.group("format"))
 
 
+def parse_detail_year(content):
+    text = content.decode("utf-8", errors="replace")
+    match = re.search(r"<b[^>]*>\s*A(?:ñ|&ntilde;)o:\s*</b>\s*<a[^>]*>\s*(?P<year>(?:19|20)\d{2})\s*</a>", text, re.IGNORECASE)
+    return match.group("year") if match else ""
+
+
+def parse_detail_size(content):
+    text = content.decode("utf-8", errors="replace")
+    match = re.search(r"<b[^>]*>\s*Tama(?:ñ|&ntilde;)o:\s*</b>\s*(?P<size>[^<\r\n]+)", text, re.IGNORECASE)
+    return parse_size_to_bytes(strip_tags(match.group("size"))) if match else 0
+
+
 def normalize_release_tag(value):
-    value = re.sub(r"\s+", ".", value.strip())
-    return value.strip(".")
+    return re.sub(r"\s+", " ", value.strip()).strip()
 
 
 def has_release_tag(title, tag):
@@ -197,21 +246,36 @@ def enrich_result_from_detail(base_url, result):
         return result
 
     release_format = normalize_release_tag(parse_detail_format(content))
-    title = result["title"]
-    tags = []
+    release_year = parse_detail_year(content)
+    detail_size = parse_detail_size(content)
+    title = result["title"].strip()
+    extracted_tags = []
 
-    if release_format and not has_release_tag(title, release_format):
-        tags.append(release_format)
+    for match in re.finditer(r"[\[\(]([^\]\)]+)[\]\)]", title):
+        tag = match.group(1).strip()
+        if tag.upper() == "4K":
+            release_format = "UHD 4K 2160p"
+        elif tag.upper() == "FULLBLURAY":
+            release_format = "COMPLETE BLURAY"
+        else:
+            extracted_tags.append(tag.upper())
 
-    if "subs" in title.lower():
-        if not has_release_tag(title, "Spanish.Subs"):
-            tags.append("Spanish.Subs")
-    elif not has_release_tag(title, "Spanish"):
-        tags.append("Spanish")
+    title = re.sub(r"\s*[\[\(]([^\]\)]+)[\]\)]\s*", " ", title).strip(" .")
+    if release_year and not has_release_tag(title, release_year):
+        title = f"{title} {release_year}"
 
-    if tags:
-        result = dict(result)
-        result["title"] = f"{title} [{' '.join(tags)}]"
+    parts = [title]
+    parts.extend(extracted_tags)
+    parts.append("SPANISH")
+    if release_format:
+        parts.append(release_format.replace("-", " "))
+
+    result = dict(result)
+    result["title"] = re.sub(r"\s+", " ", " ".join(parts)).strip()
+    if detail_size:
+        result["size"] = detail_size
+
+    result["category"] = infer_category(result["details"], "", result["title"], release_format)
 
     return result
 
@@ -219,7 +283,7 @@ def enrich_result_from_detail(base_url, result):
 def enrich_results_from_details(base_url, results):
     enriched = []
     for result in results:
-        if result["category"] == "2000":
+        if result["category"] in {"2000", "2040", "2045"}:
             enriched.append(enrich_result_from_detail(base_url, result))
         else:
             enriched.append(result)
@@ -227,14 +291,14 @@ def enrich_results_from_details(base_url, results):
 
 
 def build_result(base_url, path, title, quality, badge, pub_date):
-    category = infer_category(path, badge)
+    category = infer_category(path, badge, title, quality)
     table = infer_table(path)
     download_id = infer_download_id(path)
     details = absolute_url(base_url, path)
     params = urllib.parse.urlencode({"id": download_id or "", "tabla": table})
     download = f"/download?{params}"
 
-    if quality:
+    if quality and not has_release_tag(title, quality):
         title = f"{title} [{quality}]"
 
     return {
@@ -244,7 +308,11 @@ def build_result(base_url, path, title, quality, badge, pub_date):
         "download": download,
         "category": category,
         "pub_date": pub_date or current_pub_date(),
-        "size": 0,
+        "size": estimate_size(title, category),
+        "seeders": 1,
+        "peers": 2,
+        "download_volume_factor": 0,
+        "upload_volume_factor": 1,
     }
 
 
@@ -303,6 +371,16 @@ def build_feed_xml(base_url, public_url, items):
         attr = ET.SubElement(item, "{http://torznab.com/schemas/2015/feed}attr")
         attr.set("name", "category")
         attr.set("value", result["category"])
+
+        for name, value in (
+            ("seeders", result["seeders"]),
+            ("peers", result["peers"]),
+            ("downloadvolumefactor", result["download_volume_factor"]),
+            ("uploadvolumefactor", result["upload_volume_factor"]),
+        ):
+            attr = ET.SubElement(item, "{http://torznab.com/schemas/2015/feed}attr")
+            attr.set("name", name)
+            attr.set("value", str(value))
 
     return xml_response(rss)
 
