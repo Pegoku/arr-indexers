@@ -64,6 +64,15 @@ def absolute_url(base_url, path):
     return urllib.parse.urljoin(base_url.rstrip("/") + "/", path)
 
 
+def normalize_search_term(query):
+    query = query or ""
+    query = re.sub(r"[-._()@/\\[\]+%]", " ", query)
+    query = re.sub(r"\s+", " ", query).strip()
+    query = re.sub(r"\s+(?:19|20)\d{2}$", "", query)
+    query = re.sub(r"\b(espa[ñn]ol|spanish|castellano|spa)\b", "", query, flags=re.IGNORECASE)
+    return re.sub(r"\s+", " ", query).strip()
+
+
 def discover_dontorrent_base_url(source_url=DEFAULT_PROXY_SOURCE_URL):
     content, _, _ = http_request(source_url)
     text = content.decode("utf-8", errors="replace")
@@ -524,10 +533,11 @@ class DonTorrentServer(BaseHTTPRequestHandler):
 
     def search_with_base_url(self, base_url, query):
         if query:
+            normalized_query = normalize_search_term(query)
             body, _, _ = http_request(
                 absolute_url(base_url, "/buscar"),
                 method="POST",
-                data={"valor": query, "Buscar": "Buscar"},
+                data={"valor": normalized_query, "Buscar": "Buscar"},
             )
             return enrich_results_from_details(base_url, parse_results(base_url, body))
 
